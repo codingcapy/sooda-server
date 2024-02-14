@@ -8,11 +8,36 @@ Description: App for Sooda server
 
 import express from "express";
 import cors from "cors"
+import { Server as SocketServer } from "socket.io"
+import http from "http"
 
 const app = express();
 const port = 3333;
 
 app.use(cors())
-app.get("/", (req, res) => res.send("welcome"));
-
-app.listen(port, () => console.log(`Server listeining on port : ${port}`));
+const server = http.createServer(app);
+const io = new SocketServer(server, {
+  cors: {
+    origin: "https://codingcapy.github.io",
+  },
+});
+io.on("connection", (socket) => {
+  socket.on("message", (body) => {
+    socket.broadcast.emit("message", {
+      body,
+      from: socket.id.slice(6),
+    });
+  });
+  socket.on("friend", (body) => {
+    socket.broadcast.emit("friend", {
+      body,
+      from: socket.id.slice(6),
+    });
+  });
+  socket.on("chat", (body) => {
+    socket.broadcast.emit("chat", {
+      body,
+      from: socket.id.slice(6),
+    });
+  });
+});
