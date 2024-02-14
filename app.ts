@@ -7,10 +7,12 @@ Description: App for Sooda server
  */
 
 import express from "express";
+import cors from "cors"
 
 const app = express();
 const port = 3333;
 
+app.use(cors())
 app.get("/", (req, res) => res.send("welcome"));
 
 app.listen(port, () => console.log(`Server listeining on port : ${port}`));
