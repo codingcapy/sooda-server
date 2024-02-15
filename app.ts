@@ -10,6 +10,7 @@ import express from "express";
 import cors from "cors"
 import { Server as SocketServer } from "socket.io"
 import http from "http"
+import users from "./routes/users";
 
 const app = express();
 const port = 3333;
@@ -18,7 +19,7 @@ app.use(cors())
 const server = http.createServer(app);
 const io = new SocketServer(server, {
   cors: {
-    origin: "https://codingcapy.github.io",
+    origin: "https://localhost:5173",
   },
 });
 io.on("connection", (socket) => {
@@ -41,3 +42,8 @@ io.on("connection", (socket) => {
     });
   });
 });
+
+app.get("/",(req,res)=>res.send("welcome"))
+app.use("/api/v1/users", users);
+
+server.listen(port, ()=>console.log(`Server listening on port: ${port}`))
