@@ -16,6 +16,7 @@ const app = express();
 const port = 3333;
 
 app.use(cors())
+app.use(express.json())
 const server = http.createServer(app);
 const io = new SocketServer(server, {
   cors: {
@@ -43,7 +44,7 @@ io.on("connection", (socket) => {
   });
 });
 
-app.get("/",(req,res)=>res.send("welcome"))
+app.get("/", (req, res) => res.send("welcome"))
 app.use("/api/v1/users", users);
 
-server.listen(port, ()=>console.log(`Server listening on port: ${port}`))
+server.listen(port, () => console.log(`Server listening on port: ${port}`))
