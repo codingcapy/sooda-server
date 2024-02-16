@@ -11,6 +11,7 @@ import cors from "cors"
 import { Server as SocketServer } from "socket.io"
 import http from "http"
 import users from "./routes/users";
+import user from "./routes/user";
 
 const app = express();
 const port = 3333;
@@ -45,6 +46,7 @@ io.on("connection", (socket) => {
 });
 
 app.get("/", (req, res) => res.send("welcome"))
+app.use("/api/v1/user", user)
 app.use("/api/v1/users", users);
 
 server.listen(port, () => console.log(`Server listening on port: ${port}`))
