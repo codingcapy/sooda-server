@@ -29,40 +29,51 @@ export function getUser(req: Request, res: Response) {
 
 export async function createUser(req: Request, res: Response) {
     const { username, password, email } = req.body
-    const displayName = username;
-    const encrypted = await bcrypt.hash(password, saltRounds);
-    pool.query("SELECT u FROM users u WHERE u.email = $1", [email], (err, result) => {
-        if (result.rows.length) {
-            return res.send("Email already exists")
-        }
-        pool.query("INSERT INTO users(username, password, email, display_name) VALUES ($1, $2, $3, $4)", [username, encrypted.toString(), email, displayName], (err, result) => {
+    try {
+        const usernameQuery = await pool.query("SELECT * FROM users WHERE username = $1", [username]);
+        if (usernameQuery.rows[0]) {
+            res.json({ success: false, message: "Username already exists" });
+        };
+        const emailQuery = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+        if (emailQuery.rows[0]) {
+            res.json({ success: false, message: "An account associated with this email already exists" });
+        };
+        const encrypted = await bcrypt.hash(password, saltRounds);
+        const displayName = username;
+        await pool.query("INSERT INTO users(username, password, email, display_name) VALUES ($1, $2, $3, $4)", [username, encrypted.toString(), email, displayName], (err, result) => {
             if (err) throw err
             res.status(201).send("User created successfully")
         })
-    })
-}
+    }
+    catch (err) {
+        console.log(err)
+        res.status(400).json({ success: false, message: "Error creating user" })
+    }
+};
 
 export async function validateUser(req: Request, res: Response) {
     const { username, password } = req.body;
-    console.log(username)
-    console.log(password)
-    pool.query("SELECT * FROM users WHERE username = $1", [username], (err, result) => {
-        if (err) throw err;
-        console.log(result.rows.length)
-        if (!result.rows.length) {
-            return res.json({ result: { user: null, token: null } });
-        }
-        bcrypt.compare(password, result.rows[0].password || "", function (err, result2) {
-            console.log(result2)
-            if (result2 === true) {
-                const token = jwt.sign({ id: result.rows[0].userId }, "secret", { expiresIn: "2days" });
-                return res.json({ result: { result, token } });
+    try {
+        const queryResult = await pool.query("SELECT * FROM users WHERE username = $1", [username]);
+        const user = queryResult.rows[0];
+        if (!user) return res.json({ result: { user: null, token: null } });
+        bcrypt.compare(password, user.password || "", function (err, result) {
+            if (err) {
+                console.error("Error comparing passwords:", err);
+                return res.status(500).send("Internal Server Error");
             }
-            else {
+            if (result) {
+                const token = jwt.sign({ id: user.userId }, process.env.JWT_SECRET || "default_secret", { expiresIn: "2 days" });
+                return res.json({ result: { user, token } });
+            } else {
                 return res.json({ result: { user: null, token: null } });
             }
-        })
-    });
+        });
+    }
+    catch (error) {
+        console.error("Error validating user:", error);
+        return res.status(500).send("Internal Server Error");
+    }
 }
 
 export async function decryptToken(req: Request, res: Response) {
@@ -97,26 +108,26 @@ export async function searchUserById(id: number) {
 }
 
 export async function addFriend(req: Request, res: Response) {
-    const userId = req.body.userId;
-    const username = req.body.username;
-    const friendName = req.body.friendName;
-    const displayName = req.body.displayName;
-    pool.query("SELECT * FROM users WHERE username = $1", [friendName], (err, result) => {
-        if (result.rows.length === 0) {
-            return res.json({ success: false, message: "User does not exist" });
+    try {
+        const { friendName, username, userId } = req.body;
+        const userResult = await pool.query("SELECT * FROM users WHERE username = $1", [friendName]);
+        if (userResult.rows.length === 0) {
+            return res.status(400).json({ success: false, message: "User does not exist" });
         }
+        const friendId = userResult.rows[0].user_id;
         if (username === friendName) {
-            return res.json({ success: false, message: "That's yourself!" });
+            return res.status(400).json({ success: false, message: "That's yourself!" });
         }
-        pool.query("SELECT * FROM user_friends WHERE user_id = $1 AND friend_id = $2", [userId, result.rows[0].user_id], (err2, result2) => {
-            if (result2.rows.length > 0) {
-                return res.json({ success: false, message: "User is already your friend!" });
-            }
-            pool.query("INSERT INTO user_friends(user_id, friend_id, display_name) VALUES ($1, $2, $3)", [userId, result.rows[0].user_id, displayName], (err3, result3) => {
-                if (err) throw err
-                res.status(201).send("User Friend created successfully")
-            })
-        })
-    })
-}
+        const friendshipResult = await pool.query("SELECT * FROM user_friends WHERE user_id = $1 AND friend_id = $2", [userId, friendId]);
+        if (friendshipResult.rows.length > 0) {
+            return res.status(400).json({ success: false, message: "User is already your friend!" });
+        }
+        await pool.query("INSERT INTO user_friends(user_id, friend_id, display_name) VALUES ($1, $2, $3)", [userId, friendId, friendName]);
+        await pool.query("INSERT INTO user_friends(user_id, friend_id, display_name) VALUES ($1, $2, $3)", [friendId, userId, username]);
 
+        res.status(201).send("User Friend created successfully");
+    } catch (error) {
+        console.error("Error adding friend:", error);
+        res.status(500).send("Internal Server Error");
+    }
+}
