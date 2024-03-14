@@ -11,46 +11,6 @@ export interface IDecodedUser {
     userId: number
 };
 
-export function getUsers(req: Request, res: Response) {
-    pool.query("SELECT * FROM users", (error, results) => {
-        if (error) throw error;
-        res.status(200).json(results.rows);
-    })
-}
-
-export function getUser(req: Request, res: Response) {
-    const userId = req.params.userId
-    pool.query("SELECT * FROM users WHERE user_id = $1", [userId], (error, results) => {
-        if (error) throw error;
-        console.log(results.rows[0].userid)
-        res.status(200).json(results.rows);
-    })
-}
-
-export async function createUser(req: Request, res: Response) {
-    const { username, password, email } = req.body
-    try {
-        const usernameQuery = await pool.query("SELECT * FROM users WHERE username = $1", [username]);
-        if (usernameQuery.rows[0]) {
-            res.json({ success: false, message: "Username already exists" });
-        };
-        const emailQuery = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
-        if (emailQuery.rows[0]) {
-            res.json({ success: false, message: "An account associated with this email already exists" });
-        };
-        const encrypted = await bcrypt.hash(password, saltRounds);
-        const displayName = username;
-        await pool.query("INSERT INTO users(username, password, email, display_name) VALUES ($1, $2, $3, $4)", [username, encrypted.toString(), email, displayName], (err, result) => {
-            if (err) throw err
-            res.status(201).send("User created successfully")
-        })
-    }
-    catch (err) {
-        console.log(err)
-        res.status(400).json({ success: false, message: "Error creating user" })
-    }
-};
-
 export async function validateUser(req: Request, res: Response) {
     const { username, password } = req.body;
     try {
@@ -107,6 +67,56 @@ export async function searchUserById(id: number) {
     }
 }
 
+export async function createUser(req: Request, res: Response) {
+    const { username, password, email } = req.body
+    try {
+        const usernameQuery = await pool.query("SELECT * FROM users WHERE username = $1", [username]);
+        if (usernameQuery.rows[0]) {
+            return res.json({ success: false, message: "Username already exists" });
+        };
+        const emailQuery = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+        if (emailQuery.rows[0]) {
+            return res.json({ success: false, message: "An account associated with this email already exists" });
+        };
+        const encrypted = await bcrypt.hash(password, saltRounds);
+        const displayName = username;
+        await pool.query("INSERT INTO users(username, password, email, display_name) VALUES ($1, $2, $3, $4)", [username, encrypted.toString(), email, displayName], (err, result) => {
+            if (err) throw err
+            res.status(201).send("User created successfully")
+        })
+    }
+    catch (err) {
+        console.log(err)
+        res.status(400).json({ success: false, message: "Error creating user" })
+    }
+};
+
+export function getUser(req: Request, res: Response) {
+    const userId = req.params.userId
+    pool.query("SELECT * FROM users WHERE user_id = $1", [userId], (error, results) => {
+        if (error) throw error;
+        console.log(results.rows[0].userid)
+        res.status(200).json(results.rows);
+    })
+}
+
+export async function updateUser(req: Request, res: Response) {
+    try {
+        const userId = parseInt(req.params.userId);
+        const incomingUser = await req.body;
+        const incomingPassword = incomingUser.password;
+        const encrypted = await bcrypt.hash(incomingPassword, saltRounds);
+        const updatedUser = await pool.query("UPDATE users SET password = $1 WHERE user_id = $2",
+            [encrypted, userId]
+        );
+        res.status(200).json({ success: true });
+    }
+    catch (err) {
+        console.log(err);
+        res.status(500).json({ success: false, message: "Error updating user" });
+    }
+}
+
 export async function addFriend(req: Request, res: Response) {
     try {
         const { friendName, username, userId } = req.body;
@@ -129,5 +139,147 @@ export async function addFriend(req: Request, res: Response) {
     } catch (error) {
         console.error("Error adding friend:", error);
         res.status(500).send("Internal Server Error");
+    }
+}
+
+export async function getFriends(req: Request, res: Response) {
+    try {
+        const userId = req.params.userId;
+        const friendsQuery = await pool.query(`
+            SELECT users.*
+            FROM user_friends
+            INNER JOIN users ON user_friends.friend_id = users.user_id
+            WHERE user_friends.user_id = $1
+        `, [userId]);
+        const friends = friendsQuery.rows;
+        res.status(200).json({ success: true, friends });
+    } catch (error) {
+        console.error("Error getting friends:", error);
+        res.status(500).json({ success: false, message: "Error getting friends" });
+    }
+}
+
+export async function createChat(req: Request, res: Response) {
+    try {
+        const title = req.body.title;
+        const incomingUser = req.body.user;
+        const userQuery = await pool.query("SELECT * FROM users WHERE username = $1", [incomingUser])
+        const user = userQuery.rows[0]
+        const incomingFriend = req.body.friend;
+        const friendQuery = await pool.query("SELECT * FROM users WHERE username = $1", [incomingFriend])
+        const friend = friendQuery.rows[0]
+        await pool.query("INSERT INTO chats(title) VALUES ($1)", [title]);
+        const chatsQuery = await pool.query("SELECT * FROM chats WHERE title = $1", [title])
+        const chatId = chatsQuery.rows[chatsQuery.rows.length - 1].chat_id;
+        await pool.query("INSERT INTO user_chats(user_id, chat_id) VALUES ($1, $2)", [user.user_id, chatId]);
+        await pool.query("INSERT INTO user_chats(user_id, chat_id) VALUES ($1, $2)", [friend.user_id, chatId]);
+        res.status(200).json({ success: true, message: "Chat added successfully!" });
+    }
+    catch (err) {
+        console.log(err);
+        res.status(500).json({ success: false, message: "Error creating chat" });
+    }
+}
+
+export async function getChats(req: Request, res: Response) {
+    try {
+        const userId = req.params.userId;
+        const userChatsQuery = await pool.query(`
+            SELECT chats.*
+            FROM user_chats
+            INNER JOIN chats ON user_chats.chat_id = chats.chat_id
+            WHERE user_chats.user_id = $1
+        `, [userId]);
+        const chats = userChatsQuery.rows;
+        res.status(200).json(chats);
+    }
+    catch (err) {
+        console.error("Error getting chats:", err);
+        res.status(500).json({ success: false, message: "Error getting chats" });
+    }
+}
+
+export async function getChat(req: Request, res: Response) {
+    try {
+        const chatId = req.params.chatId;
+        const chatQuery = await pool.query("SELECT * FROM chats WHERE chat_id = $1", [chatId]);
+        const chat = chatQuery.rows[0]
+        res.status(200).json(chat);
+    }
+    catch (err) {
+        console.log(err);
+        res.status(500).json({ success: false, message: "Error getting chat" });
+    }
+}
+
+export async function leaveChat(req: Request, res: Response) {
+    try {
+        const userId = req.body.userId;
+        const chatId = req.body.chatId;
+        await pool.query("DELETE FROM user_chats WHERE user_id = $1 AND chat_id = $2", [userId, chatId])
+        const userChatQuery = await pool.query("SELECT * FROM user_chats WHERE chat_id = $1", [chatId])
+        const userChat = userChatQuery.rows;
+        if (userChat.length === 0) {
+            await pool.query("DELETE FROM chats WHERE chat_id = $1 ", [chatId])
+            await pool.query("DELETE FROM messages WHERE chat_id = $1", [chatId])
+        }
+        res.status(200).json({ success: true });
+    }
+    catch (err) {
+        console.log(err);
+        res.status(500).json({ success: false, message: "Error leaving chat" });
+    }
+}
+
+export async function createMessage(req: Request, res: Response) {
+    const inputContent = req.body.content;
+    const user = req.body.user;
+    const chatId = req.body.chatId;
+    try {
+        await pool.query("INSERT INTO messages(content, username, chat_id) VALUES ($1, $2, $3)", [inputContent, user, chatId]);
+        res.status(200).json({ success: true, message: "Message added successfully!" });
+    }
+    catch (err) {
+        console.log(err)
+        res.status(500).json({ success: false, message: "Error creating message" });
+    }
+}
+
+export async function getMessages(req: Request, res: Response) {
+    try {
+        const chatId = req.params.chatId;
+        const messagesQuery = await pool.query("SELECT * FROM messages WHERE chat_id = $1", [chatId])
+        const messages = messagesQuery.rows;
+        res.status(200).json(messages)
+    }
+    catch (err) {
+        console.log(err);
+        res.status(500).json({ success: false, message: "Error getting messages" });
+    }
+}
+
+export async function updateMessage(req: Request, res: Response) {
+    try {
+        const messageId = req.params.messageId;
+        const content = req.body.content
+        const message = await pool.query("UPDATE messages SET content = $1 WHERE message_id = $2", [content, messageId])
+        res.status(200).json({ success: true });
+    }
+    catch (err) {
+        console.log(err);
+        res.status(500).json({ success: false, message: "Error updating message" });
+    }
+}
+
+export async function createComment(req: Request, res: Response) {
+    try {
+        const email = req.body.email;
+        const content = req.body.content;
+        await pool.query("INSERT INTO comments(email, content) VALUES ($1, $2)", [email, content]);
+        res.status(200).json({ success: true });
+    }
+    catch (err) {
+        console.log(err);
+        res.status(500).json({ success: false, message: "Error sending comment" });
     }
 }
