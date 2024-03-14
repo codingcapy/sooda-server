@@ -18,14 +18,24 @@ export function getUsers(req: Request, res: Response) {
     })
 }
 
+export function getUser(req: Request, res: Response) {
+    const userId = req.params.userId
+    pool.query("SELECT * FROM users WHERE user_id = $1", [userId], (error, results) => {
+        if (error) throw error;
+        console.log(results.rows[0].userid)
+        res.status(200).json(results.rows);
+    })
+}
+
 export async function createUser(req: Request, res: Response) {
     const { username, password, email } = req.body
+    const displayName = username;
     const encrypted = await bcrypt.hash(password, saltRounds);
     pool.query("SELECT u FROM users u WHERE u.email = $1", [email], (err, result) => {
         if (result.rows.length) {
             return res.send("Email already exists")
         }
-        pool.query("INSERT INTO users(username, password, email) VALUES ($1, $2, $3)", [username, encrypted.toString(), email], (err, result) => {
+        pool.query("INSERT INTO users(username, password, email, display_name) VALUES ($1, $2, $3, $4)", [username, encrypted.toString(), email, displayName], (err, result) => {
             if (err) throw err
             res.status(201).send("User created successfully")
         })
@@ -36,19 +46,16 @@ export async function validateUser(req: Request, res: Response) {
     const { username, password } = req.body;
     console.log(username)
     console.log(password)
-    pool.query("SELECT u FROM users u WHERE u.username = $1", [username], (err, result) => {
+    pool.query("SELECT * FROM users WHERE username = $1", [username], (err, result) => {
         if (err) throw err;
         console.log(result.rows.length)
         if (!result.rows.length) {
             return res.json({ result: { user: null, token: null } });
         }
-        //@ts-ignore
-        console.log(result.rows)
-        //@ts-ignore
-        bcrypt.compare(password, result.password || "", function (err, result2) {
+        bcrypt.compare(password, result.rows[0].password || "", function (err, result2) {
+            console.log(result2)
             if (result2 === true) {
-                //@ts-ignore
-                const token = jwt.sign({ id: result.userId }, "secret", { expiresIn: "2days" });
+                const token = jwt.sign({ id: result.rows[0].userId }, "secret", { expiresIn: "2days" });
                 return res.json({ result: { result, token } });
             }
             else {
@@ -76,31 +83,20 @@ export async function decryptToken(req: Request, res: Response) {
 }
 
 export async function searchUserById(id: number) {
-    const user = pool.query("SELECT u FROM users u WHERE u.userId = $1", [id], (err, result) => {
-        if (err) throw err;
-        return result;
-    })
-    console.log(user)
-    return user;
-    // if (!user) throw new Error("User not found");
+    try {
+        const result = await pool.query("SELECT * FROM users WHERE userid = $1", [id]);
+        if (result.rows.length === 0) {
+            return null;
+        }
+        const user = result.rows[0];
+        return user;
+    } catch (error) {
+        console.error('Error executing query:', error);
+        // throw new Error('Error searching user by ID');
+    }
 }
 
-// export async function addFriend(req: Request, res: Response) {
-//     const inputUser = req.body.username;
-//     const user = await pool.query("SELECT u FROM users u WHERE u.email = $1")
-//     const inputFriend = req.body.friend;
-//     const friend = await pool.query
-//     if (!friend) {
-//         return res.json({ success: false, message: "User does not exist" });
-//     }
-//     if (user.friends.includes(friend.username)) {
-//         return res.json({ success: false, message: "User is already your friend!" });
-//     }
-//     if (inputUser == inputFriend) {
-//         return res.json({ success: false, message: "That's yourself!" });
-//     }
-//     await User.updateOne({ username: inputUser }, { $push: { friends: friend.username } });
-//     await User.updateOne({ username: inputFriend }, { $push: { friends: user.username } });
-//     res.status(200).json({ success: true, message: "Friend added successfully!" });
-// }
+export async function addFriend(req: Request, res: Response) {
+
+}
 
