@@ -97,6 +97,26 @@ export async function searchUserById(id: number) {
 }
 
 export async function addFriend(req: Request, res: Response) {
-
+    const userId = req.body.userId;
+    const username = req.body.username;
+    const friendName = req.body.friendName;
+    const displayName = req.body.displayName;
+    pool.query("SELECT * FROM users WHERE username = $1", [friendName], (err, result) => {
+        if (result.rows.length === 0) {
+            return res.json({ success: false, message: "User does not exist" });
+        }
+        if (username === friendName) {
+            return res.json({ success: false, message: "That's yourself!" });
+        }
+        pool.query("SELECT * FROM user_friends WHERE user_id = $1 AND friend_id = $2", [userId, result.rows[0].user_id], (err2, result2) => {
+            if (result2.rows.length > 0) {
+                return res.json({ success: false, message: "User is already your friend!" });
+            }
+            pool.query("INSERT INTO user_friends(user_id, friend_id, display_name) VALUES ($1, $2, $3)", [userId, result.rows[0].user_id, displayName], (err3, result3) => {
+                if (err) throw err
+                res.status(201).send("User Friend created successfully")
+            })
+        })
+    })
 }
 

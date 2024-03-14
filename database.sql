@@ -8,14 +8,14 @@ CREATE TABLE users(
     email VARCHAR(255),
     display_name VARCHAR(255),
     created_at DATE DEFAULT CURRENT_DATE,
-    active BOOLEAN
+    active BOOLEAN DEFAULT TRUE
 );
 
 CREATE TABLE user_friends(
     user_friend_id SERIAL PRIMARY KEY,
     user_id INTEGER,
     friend_id INTEGER,
-    blocked BOOLEAN,
+    blocked BOOLEAN DEFAULT FALSE,
     display_name VARCHAR(255)
 );
 
